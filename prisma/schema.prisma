@@ -1,0 +1,260 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Core user model
+model User {
+  id                    String   @id @default(cuid())
+  email                 String   @unique
+  passwordHash          String?
+  firstName             String?
+  lastName              String?
+  avatarUrl             String?
+  companyName           String?
+  companySize           String?
+  industry              String?
+  subscriptionTier      String   @default("free") // free, pro, enterprise
+  subscriptionStatus    String   @default("active") // active, inactive, cancelled
+  trialEndsAt           DateTime?
+  onboardingCompleted   Boolean  @default(false)
+  preferences           Json     @default("{}")
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+  lastLoginAt           DateTime?
+  isActive              Boolean  @default(true)
+
+  // Relations
+  projects              Project[]
+  aiJobs                AiJob[]
+  accounts              Account[]
+  sessions              Session[]
+
+  @@map("users")
+}
+
+// NextAuth.js required models
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_tokens")
+}
+
+// Core project/funnel model
+model Project {
+  id                    String   @id @default(cuid())
+  userId                String
+  name                  String
+  description           String?
+  businessName          String?
+  businessDescription   String?
+  industry              String?
+  targetAudience        String?
+  businessGoals         Json?
+  monthlyRevenue        String?
+  competitorUrls        Json?    @default("[]")
+  status                String   @default("draft") // draft, researching, generating, completed, archived
+  
+  // Geographic scope for research
+  geographicScope       String?  @default("auto") // 'auto', 'local', 'national', 'global'
+  geographicLocation    String?  // city, state, zip
+  geographicRadius      Int?     @default(50) // radius in miles for local
+  
+  // AI-generated content
+  marketResearch        Json?
+  personas              Json?
+  contentVariations     Json?
+  funnelStrategy        Json?
+  
+  // Performance tracking
+  estimatedConversionRate Decimal?
+  actualConversionRate    Decimal?
+  totalVisitors           Int      @default(0)
+  totalConversions        Int      @default(0)
+  revenueGenerated        Decimal  @default(0)
+  
+  // Collaboration
+  collaborators         Json     @default("[]")
+  isPublic              Boolean  @default(false)
+  
+  // Metadata
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+  publishedAt           DateTime?
+  archivedAt            DateTime?
+
+  // Relations
+  user                  User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  marketResearchData    MarketResearch[]
+  personaData           Persona[]
+  pages                 FunnelPage[]
+  abTests               ABTest[]
+  analyticsEvents       AnalyticsEvent[]
+  aiJobs                AiJob[]
+
+  @@map("projects")
+}
+
+// Market research data
+model MarketResearch {
+  id              String   @id @default(cuid())
+  projectId       String
+  marketSize      Float?
+  growthRate      Float?
+  competitors     Json     @default("[]")
+  opportunities   Json     @default("[]")
+  threats         Json     @default("[]")
+  confidenceScore Float?
+  sources         Json     @default("[]")
+  createdAt       DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@map("market_research")
+}
+
+// Customer personas
+model Persona {
+  id                String   @id @default(cuid())
+  projectId         String
+  name              String
+  demographics      Json
+  psychographics    Json
+  painPoints        Json     @default("[]")
+  goals             Json     @default("[]")
+  preferredChannels Json     @default("[]")
+  isPrimary         Boolean  @default(false)
+  createdAt         DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@map("personas")
+}
+
+// Funnel pages
+model FunnelPage {
+  id              String   @id @default(cuid())
+  projectId       String
+  type            String   // landing, product, checkout, thank-you, email
+  name            String
+  content         Json
+  conversionRate  Decimal?
+  variants        Json     @default("[]")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@map("funnel_pages")
+}
+
+// A/B Testing Framework
+model ABTest {
+  id                    String   @id @default(cuid())
+  projectId             String
+  name                  String
+  description           String?
+  testType              String   // headline, cta, layout, copy, image
+  variants              Json     @default("[]")
+  trafficSplit          Json     @default("[]")
+  status                String   @default("draft") // draft, running, completed, paused
+  winnerVariantId       String?
+  confidenceLevel       Decimal?
+  minSampleSize         Int      @default(1000)
+  maxDurationDays       Int      @default(30)
+  significanceThreshold Decimal  @default(0.95)
+  startedAt             DateTime?
+  endedAt               DateTime?
+  createdAt             DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@map("ab_tests")
+}
+
+// Real-time Analytics Events
+model AnalyticsEvent {
+  id          String   @id @default(cuid())
+  projectId   String
+  sessionId   String?
+  userId      String?
+  eventType   String   // page_view, click, conversion, form_submit
+  eventData   Json?
+  pageUrl     String?
+  referrer    String?
+  userAgent   String?
+  ipAddress   String?
+  country     String?
+  city        String?
+  abTestId    String?
+  variantId   String?
+  timestamp   DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@map("analytics_events")
+}
+
+// AI Generation Jobs Queue
+model AiJob {
+  id                    String   @id @default(cuid())
+  userId                String
+  projectId             String?
+  jobType               String   // market_research, persona_generation, content_creation
+  status                String   @default("pending") // pending, running, completed, failed
+  progress              Int      @default(0)
+  inputData             Json?
+  resultData            Json?
+  errorMessage          String?
+  tokensUsed            Int?
+  estimatedCost         Decimal?
+  processingTimeSeconds Int?
+  createdAt             DateTime @default(now())
+  startedAt             DateTime?
+  completedAt           DateTime?
+
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@map("ai_jobs")
+}
